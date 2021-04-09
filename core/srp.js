@@ -1,79 +1,11 @@
 /** @fileOverview Javascript SRP implementation.
  *
- * This file contains a partial implementation of the SRP (Secure Remote
- * Password) password-authenticated key exchange protocol. Given a user
- * identity, salt, and SRP group, it generates the SRP verifier that may
- * be sent to a remote server to establish and SRP account.
- *
- * For more information, see http://srp.stanford.edu/.
- *
- * @author Quinn Slack
+ * @author weir007
  */
 
-/**
- * Compute the SRP verifier from the username, password, salt, and group.
- * @namespace
- */
-sjcl.keyexchange.srp = {
-  /**
-   * Calculates SRP v, the verifier.
-   *   v = g^x mod N [RFC 5054]
-   * @param {String} I The username.
-   * @param {String} P The password.
-   * @param {Object} s A bitArray of the salt.
-   * @param {Object} group The SRP group. Use sjcl.keyexchange.srp.knownGroup
-                           to obtain this object.
-   * @return {Object} A bitArray of SRP v.
-   */
-  makeVerifier: function(I, P, s, group) {
-    var x;
-    x = sjcl.keyexchange.srp.makeX(I, P, s);
-    x = sjcl.bn.fromBits(x);
-    return group.g.powermod(x, group.N);
-  },
-
-  /**
-   * Calculates SRP x.
-   *   x = SHA1(<salt> | SHA(<username> | ":" | <raw password>)) [RFC 2945]
-   * @param {String} I The username.
-   * @param {String} P The password.
-   * @param {Object} s A bitArray of the salt.
-   * @return {Object} A bitArray of SRP x.
-   */
-  makeX: function(I, P, s) {
-    var inner = sjcl.hash.sha1.hash(I + ':' + P);
-    return sjcl.hash.sha1.hash(sjcl.bitArray.concat(s, inner));
-  },
-
-  /**
-   * Returns the known SRP group with the given size (in bits).
-   * @param {String} i The size of the known SRP group.
-   * @return {Object} An object with "N" and "g" properties.
-   */
-  knownGroup:function(i) {
-    if (typeof i !== "string") { i = i.toString(); }
-    if (!sjcl.keyexchange.srp._didInitKnownGroups) { sjcl.keyexchange.srp._initKnownGroups(); }
-    return sjcl.keyexchange.srp._knownGroups[i];
-  },
-
-  /**
-   * Initializes bignum objects for known group parameters.
-   * @private
-   */
-  _didInitKnownGroups: false,
-  _initKnownGroups:function() {
-    var i, size, group;
-    for (i=0; i < sjcl.keyexchange.srp._knownGroupSizes.length; i++) {
-      size = sjcl.keyexchange.srp._knownGroupSizes[i].toString();
-      group = sjcl.keyexchange.srp._knownGroups[size];
-      group.N = new sjcl.bn(group.N);
-      group.g = new sjcl.bn(group.g);
-    }
-    sjcl.keyexchange.srp._didInitKnownGroups = true;
-  },
-
-  _knownGroupSizes: [1024, 1536, 2048, 3072, 4096, 6144, 8192],
-  _knownGroups: {
+var _srp_didInitKnownGroups = false;
+var _srp_knownGroupSizes = [1024, 1536, 2048, 3072, 4096, 6144, 8192];
+var _srp_knownGroups = {
     1024: {
       N: "EEAF0AB9ADB38DD69C33F80AFA8FC5E86072618775FF3C0B9EA2314C" +
          "9C256576D674DF7496EA81D3383B4813D692C6E0E0D5D8E250B98BE4" +
@@ -82,7 +14,6 @@ sjcl.keyexchange.srp = {
          "FD5138FE8376435B9FC61D2FC0EB06E3",
       g:2
     },
-
     1536: {
       N: "9DEF3CAFB939277AB1F12A8617A47BBBDBA51DF499AC4C80BEEEA961" +
          "4B19CC4D5F4F5F556E27CBDE51C6A94BE4607A291558903BA0D0F843" +
@@ -93,7 +24,6 @@ sjcl.keyexchange.srp = {
          "8CE7A28C2442C6F315180F93499A234DCF76E3FED135F9BB",
       g: 2
     },
-
     2048: {
       N: "AC6BDB41324A9A9BF166DE5E1389582FAF72B6651987EE07FC319294" +
          "3DB56050A37329CBB4A099ED8193E0757767A13DD52312AB4B03310D" +
@@ -107,7 +37,6 @@ sjcl.keyexchange.srp = {
          "9E4AFF73",
       g: 2
     },
-
     3072: {
       N: "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E08" +
          "8A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B" +
@@ -125,7 +54,6 @@ sjcl.keyexchange.srp = {
          "E0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF",
        g: 5
     },
-
     4096: {
       N: "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E08" +
         "8A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B" +
@@ -148,7 +76,6 @@ sjcl.keyexchange.srp = {
         "FFFFFFFFFFFFFFFF",
       g: 5
     },
-
     6144: {
       N: "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E08" +
         "8A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B" +
@@ -180,7 +107,6 @@ sjcl.keyexchange.srp = {
         "6DCC4024FFFFFFFFFFFFFFFF",
       g: 5
     },
-
     8192: {
       N:"FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E08" +
         "8A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B" +
@@ -221,6 +147,124 @@ sjcl.keyexchange.srp = {
         "60C980DD98EDD3DFFFFFFFFFFFFFFFFF",
       g: 19
     }
-  }
+}
 
+function _srp_initKnownGroups() {
+    var i, size, group;
+    for (i=0; i < _srp_knownGroupSizes.length; i++) {
+      size = _srp_knownGroupSizes[i].toString();
+      group = _srp_knownGroups[size];
+      group.N = new sjcl.bn(group.N);
+      group.g = new sjcl.bn(group.g);
+    }
+    _srp_didInitKnownGroups = true;
+}
+
+/**
+ * Returns the known SRP group with the given size (in bits).
+ * @param {String} i The size of the known SRP group.
+ * @return {Object} An object with "N" and "g" properties.
+ */
+function _knownGroup(i) {
+  if (typeof i !== "string") { i = i.toString(); }
+  if (!_srp_didInitKnownGroups) { _srp_initKnownGroups(); }
+  return _srp_knownGroups[i];
+};
+
+/**
+ * @constructor
+ */
+sjcl.keyexchange.srp = function(modulo_bits) {
+  var bits = modulo_bits || 1024;
+  if (_srp_knownGroupSizes.indexOf(bits) > -1) {
+		bits = bits.toString();
+		this.group = _knownGroup(bits);
+  }
+};
+
+/**
+ * @private
+ * @param {number} words the number of words to generate
+ * @return {bitArray} salt
+ */
+sjcl.keyexchange.srp.prototype._genSalt = function(words, paranoia) {
+  return sjcl.random.randomWords(words || 1, paranoia || 6);
+};
+
+/**
+ * @private
+ * @param {string} I username
+ * @param {string} P password
+ * @param {bitArray} s salt
+ * @return {bitArray} H(I,P,s)
+ */
+sjcl.keyexchange.srp.prototype._makeX = function(I, P, s) {
+  var inner = sjcl.hash.sha1.hash(I + ':' + P);
+  return sjcl.hash.sha1.hash(sjcl.bitArray.concat(s, inner));
+};
+ 
+/**
+ * Calculates SRP v, the verifier.
+ *   v = g^x mod N [RFC 5054]
+ * @param {String} I The username.
+ * @param {String} P The password.
+ * @return {object} [string s:salt, string v:verifier].
+ * suggested salt : s = sjcl.random.randomWords(4, paranoia)
+ */
+sjcl.keyexchange.srp.prototype.makeVerifier = function(I, P) {
+  var s = this._genSalt();
+  var x = this._makeX(I, P, s);
+  x = sjcl.bn.fromBits(x);
+  var v = this.group.g.powermod(x, this.group.N)
+  return {s:sjcl.codec.hex.fromBits(s), v:v.toString()};
+};
+
+/**
+ * @return {object} {bn a, bn A}
+ */
+sjcl.keyexchange.srp.prototype.getPA = function(paranoia) {
+	var group = this.group;
+	var a = sjcl.bn.random(group.N, paranoia||6);
+	var A = group.g.powermod(a, group.N);
+	return {a:a, A:A};
+}
+
+/**
+ * @param {String} I The username.
+ * @param {String} P The password.
+ * @param {object} pA Output of function getPa
+ * @param {bitArray} s salt
+ * @param {bn} u
+ * @param {bn} B
+ */
+sjcl.keyexchange.srp.prototype.getSK = function(I, P, pA, s, u, B) {
+  var group = this.group;
+  var x = sjcl.bn.fromBits(this._makeX(I, P, s));
+  var v = group.g.powermod(x, group.N);
+  var e = u.mulmod(x, group.N).add(pA.a);
+  var S = B.sub(v).powermod(e, group.N);
+  var SK = sjcl.hash.sha256.hash(pA.A.toBits().concat(B.toBits()).concat(S.toBits()));
+  return SK;
+};
+
+/**
+ * @param {bitArray} A
+ * @param {bitArray} B
+ * @param {bitArray} SK Session key
+ * @return {bitArray} Key Confirmation Message of client
+ */
+sjcl.keyexchange.srp.prototype.getKCA = function(A, B, SK) {
+  return sjcl.hash.sha256.hash(A.concat(B).concat(SK));
+};
+
+/**
+ * check if M2 === H(A+M1+K)
+ * @param {bitArray} A
+ * @param {bitArray} K Session key
+ * @param {bitArray} M1 KcA
+ * @param {bitArray} M2 KcB
+ */
+sjcl.keyexchange.srp.prototype.confirmSK = function(A, K, M1, M2) {
+  M1 = A.concat(M1).concat(K);
+  return sjcl.bitArray.equal(M1, M2);
 };

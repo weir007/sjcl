@@ -3,6 +3,7 @@
  * @author Emily Stark
  * @author Mike Hamburg
  * @author Dan Boneh
+ * @author weir007
  */
 
 /**
@@ -27,6 +28,10 @@
  * <p>
  * Because bitwise ops clear this out-of-band data, these arrays can be passed
  * to ciphers like AES which want arrays of words.
+ * </p>
+ *
+ * <p>
+ * Added new functions including <it>toHex</it> and  <it>fromHex</it> by weir007.
  * </p>
  */
 sjcl.bitArray = {
