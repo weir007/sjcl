@@ -241,7 +241,7 @@ sjcl.keyexchange.srp.prototype.getSK = function(I, P, pA, s, u, B) {
   var group = this.group;
   var x = sjcl.bn.fromBits(this._makeX(I, P, s));
   var v = group.g.powermod(x, group.N);
-  var e = u.mulmod(x, group.N).add(pA.a);
+  var e = u.mul(x, group.N).add(pA.a);
   var S = B.sub(v).powermod(e, group.N);
   var SK = sjcl.hash.sha256.hash(pA.A.toBits().concat(B.toBits()).concat(S.toBits()));
   return SK;
@@ -266,5 +266,6 @@ sjcl.keyexchange.srp.prototype.getKCA = function(A, B, SK) {
  */
 sjcl.keyexchange.srp.prototype.confirmSK = function(A, K, M1, M2) {
   M1 = A.concat(M1).concat(K);
+  M1 = sjcl.hash.sha256.hash(M1);
   return sjcl.bitArray.equal(M1, M2);
 };

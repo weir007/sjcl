@@ -14,6 +14,8 @@ sjcl.ecc = {};
 sjcl.ecc.point = function(curve,x,y) {
   if (x === undefined) {
     this.isIdentity = true;
+	this.x = new curve.field(0);
+	this.y = new curve.field(1);
   } else {
     if (x instanceof sjcl.bn) {
       x = new curve.field(x);
@@ -43,10 +45,6 @@ sjcl.ecc.point.prototype = {
 
   mult: function(k) {
     return this.toJac().mult(k, this).toAffine();
-  },
-  
-  encode: function() {
-	/* only available for curve25519 temporarily */
   },
 
   /**
@@ -80,7 +78,10 @@ sjcl.ecc.point.prototype = {
   },
 
   isValid: function() {
-    return this.y.square().equals(this.curve.b.add(this.x.mul(this.curve.a.add(this.x.square()))));
+	if (this.curve.twisted)
+	  return this.curve.b.mul(this.x).mul(this.y).square().add(1).equals(this.x.square().mul(this.curve.a).add(this.y.square()));
+	else
+      return this.y.square().equals(this.curve.b.add(this.x.mul(this.curve.a.add(this.x.square()))));
   },
 
   toBits: function() {
@@ -164,8 +165,12 @@ sjcl.ecc.pointJac.toAffineMultiple = function (points) {
       } else {
         zi = z;
       }
-      zi2 = zi.square();
-      ret[i] = new sjcl.ecc.point(p.curve, p.x.mul(zi2).fullReduce(), p.y.mul(zi2.mul(zi)).fullReduce());
+	  /* weir007 */
+	  if (curve.twisted) ret[i] = new sjcl.ecc.point(p.curve, p.x.mul(zi).fullReduce(), p.y.mul(zi).fullReduce());
+      else {
+		zi2 = zi.square();
+	  ret[i] = new sjcl.ecc.point(p.curve, p.x.mul(zi2).fullReduce(), p.y.mul(zi2.mul(zi)).fullReduce());
+	  }
     }
   }
   return ret;
@@ -393,8 +398,7 @@ sjcl.ecc.pointExt.toAffineMultiple = function (points) {
 };
 
 sjcl.ecc.pointExt.prototype = {
-  add: function(Q) {
-	/* madd-2008-hwcd-4 */
+  add: function(Q) {	
 	var P = this, A, B, C, D, E, F, G, H, T2, x, y, z, t;
 	if (P.curve !== Q.curve) {
 	  throw new sjcl.exception.invalid("sjcl.ecc.add(): Points must be on the same curve to add them!");
@@ -405,31 +409,59 @@ sjcl.ecc.pointExt.prototype = {
 	} else if (Q.isIdentity) {
 	  return P;
 	}
-	
-	/* A = (Y1-X1)*(Y2+X2) */
-	A = (P.y.subM(P.x)).mul(Q.y.addM(Q.x));
-	/* B = (Y1+X1)*(Y2-X2) */
-	B = (P.y.addM(P.x)).mul(Q.y.subM(Q.x));
-	/* C = Z1*2*T2 = Z1*2*X2*Y2 */
-	C = P.z.doubleM().mul(Q.x).mul(Q.y);
-	/* D = 2*T1 */
-	D = P.t.doubleM();
-	/* E = D+C */
-	E = D.addM(C);
-	/* F = B-A */
-	F = B.subM(A);
-	/* G = B+A */
-	G = B.addM(A);
-	/* H = D-C */
-	H = D.subM(C);
-	/* X3 = E*F */
+	/* madd-2008-hwcd */
+	/* A = X1*X2 */
+	A = P.x.mul(Q.x);
+    /* B = Y1*Y2 */
+	B = P.y.mul(Q.y);
+    /* C = T1*d*T2 */
+	C = P.t.mul(this.curve.b).mul(Q.x).mul(Q.y);
+    /* D = Z1 */
+	D = P.z.copy();
+    /* E = (X1+Y1)*(X2+Y2)-A-B */
+	E = P.x.add(P.y).mul(Q.x.add(Q.y)).sub(A).sub(B);
+    /* F = D-C */
+	F = D.sub(C);
+    /* G = D+C */
+	G = D.add(C);
+    /* H = B-a*A */
+	H = B.sub(A.mul(this.curve.a));
+    /* X3 = E*F */
 	x = E.mul(F);
-	/* Y3 = G*H */
+    /* Y3 = G*H */
 	y = G.mul(H);
-	/* T3 = E*H */
+    /* T3 = E*H */
 	t = E.mul(H);
-	/* Z3 = F*G */
+    /* Z3 = F*G */
 	z = F.mul(G);
+	
+	/* madd-2008-hwcd-4 TBD: add-2008-hwcd-3 * /
+	
+	/* A = (Y1-X1)*(Y2+X2) * /
+	A = (P.y.sub(P.x)).mul(Q.y.add(Q.x));
+	/* B = (Y1+X1)*(Y2-X2) * /
+	B = (P.y.add(P.x)).mul(Q.y.sub(Q.x));
+	/* C = Z1*2*T2 = Z1*2*X2*Y2 * /
+	C = P.z.mul(2).mul(Q.x).mul(Q.y);
+	/* D = 2*T1 * /
+	D = P.t.mul(2);
+	/* E = D+C * /
+	E = D.add(C);
+	/* F = B-A * /
+	F = B.sub(A);
+	/* G = B+A * /
+	G = B.add(A);
+	/* H = D-C * /
+	H = D.sub(C);
+	/* X3 = E*F * /
+	x = E.mul(F);
+	/* Y3 = G*H * /
+	y = G.mul(H);
+	/* T3 = E*H * /
+	t = E.mul(H);
+	/* Z3 = F*G * /
+	z = F.mul(G);
+	*/
 	return new sjcl.ecc.pointExt(this.curve,x,y,z,t);
   },
   
@@ -438,12 +470,12 @@ sjcl.ecc.pointExt.prototype = {
 	/* dbl-2008-hwcd */
 	var A = this.x.square(),
 	B = this.y.square(),
-	C = this.z.square().doubleM(),
+	C = this.z.square().mul(2),
 	D = this.curve.a.mul(A),
-	E = this.x.addM(this.y).square().subM(A).subM(B),
-	G = D.addM(B),
-	F = G.subM(C),
-	H = D.subM(B),
+	E = this.x.add(this.y).square().sub(A).sub(B),
+	G = D.add(B),
+	F = G.sub(C),
+	H = D.sub(B),
 	x = E.mul(F),
 	y = G.mul(H),
 	t = E.mul(H),
@@ -619,7 +651,7 @@ sjcl.ecc.curves = {
     sjcl.bn.prime.p25519,
 	"0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed",
 	-1,
-	"0x52036cee2b6ffe738cc740797779e89800700a4d4141d8ab75eb4dca135978a3",
+	"0x52036cee2b6ffe738cc740797779e89800700a4d4141d8ab75eb4dca135978a3",/* -121665/121666 */
 	"0x216936d3cd6e53fec0a4e231fdd6dc5c692cc7609525a7b2c9562d608f25d51a",
 	"0x6666666666666666666666666666666666666666666666666666666666666658",
 	8,
@@ -634,25 +666,34 @@ sjcl.ecc.curves.c25519.encode = function(point) {
   return sjcl.codec.hex.fromBits(y);
 };
 
+/**
+ * @param {string} y Compressed point
+ * @return decompressed point
+ */
 sjcl.ecc.curves.c25519.decode = function(y) {
-  var _1 = new sjcl.bn(1);
+  //var _1 = new sjcl.bn(1);
+  var xb;
   y = sjcl.codec.hex.toBits(y);
   var x0 = y[0] >> 31 & 0x1;
   y[0] &= 0x7fffffff;
+  y = new this.field(sjcl.bn.fromBits(y));
   
   var y2 = y.square();
-  var x2 = y2.sub(_1).mul((y2.mul(this.b).add(_1)).inverse());
-  var e = new sjcl.bn("0x0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe");
+  var x2 = y2.sub(1).mul((y2.mul(this.b).add(1)).inverse());
+  var e = new sjcl.bn("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe");
   var x = x2.power(e);
   if (!x.square().equals(x2))
   {
-	x = x.mul(new sjcl.bn(2).pow(new sjcl.bn("0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb")));
+	x = x.mul(new this.field(2).power(new sjcl.bn("0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb")));
   }
   
-  if (x.toBits()[7] & 0x1) {
+  xb = x.toBits();
+  if (xb[xb.length-1] & 0x1) {
 	x = new this.field(0).sub(x);
   }
-  if (x.toBits()[7] & 0x1 != x0) {
+
+  xb = x.toBits();
+  if ((xb[xb.length-1] & 0x1) != x0) {
 	x = new this.field(0).sub(x);
   }
   

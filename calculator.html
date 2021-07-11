@@ -1,0 +1,384 @@
+<html>
+<head>
+
+<title>Calculator</title>
+
+<style type="text/css">
+.panel{width:50%; float:left}
+</style>
+
+<script type="text/javascript" src="core.js"></script>
+<script type="text/javascript">
+
+/* bn */
+var _n, _a, _b, _c;
+/* SRP */
+var _srp_n, _srp_id, _srp_pass, _srp_s, _srp_v, _srp_x, _srp_a, _srp_A, _srp_Sc, _srp_b, _srp_u, _srp_B, _srp_Ss;
+
+/* Edwards25519 */
+var _k, _l, _P, _Q, _R;
+
+
+/* SPAKE2+ */
+
+function init()
+{
+	_n = document.querySelector("#n"),
+	_a = document.querySelector("#a"),
+	_b = document.querySelector("#b"),
+	_c = document.querySelector("#c");
+
+	_srp_n = document.querySelector("#srp_n"),
+	_srp_id = document.querySelector("#srp_id"),
+	_srp_pass = document.querySelector("#srp_pass"),
+	_srp_s = document.querySelector("#srp_s"),
+	_srp_v = document.querySelector("#srp_v"),
+	_srp_x = document.querySelector("#srp_x"),
+	_srp_a = document.querySelector("#srp_a"),
+	_srp_A = document.querySelector("#srp_a1"),
+	_srp_Sc = document.querySelector("#srp_Sc"),
+	_srp_b = document.querySelector("#srp_b"),
+	_srp_u = document.querySelector("#srp_u"),
+	_srp_B = document.querySelector("#srp_b1"),
+	_srp_Ss = document.querySelector("#srp_Ss");
+	
+	_k = document.querySelector("#k"),
+	_l = document.querySelector("#l"),
+	_P = document.querySelector("#P"),
+	_Q = document.querySelector("#Q"),
+	_R = document.querySelector("#R");
+	
+	_n.value = _srp_n.value = "EEAF0AB9ADB38DD69C33F80AFA8FC5E86072618775FF3C0B9EA2314C9C256576D674DF7496EA81D3383B4813D692C6E0E0D5D8E250B98BE48E495C1D6089DAD15DC7D7B46154D6B6CE8EF4AD69B15D4982559B297BCF1885C529F566660E57EC68EDBC3C05726CC02FD4CBF4976EAA9AFD5138FE8376435B9FC61D2FC0EB06E3";
+}
+
+window.onload = init;
+
+function bn_calc()
+{
+	let n = _n.value, a = _a.value, b = _b.value, op = document.querySelector('input[name=op]:checked').value;
+	
+	n = new sjcl.bn(n);
+	a = new sjcl.bn(a);
+	b = new sjcl.bn(b);
+	c = new sjcl.bn(c);
+	var c;
+	
+	switch (op)
+	{
+		case '+':
+			c = a.add(b).mod(n);
+			break;
+		case '-':
+			c = a.sub(b).mod(n);
+			break;
+		case '×':
+			c = a.mulmod(b, n);
+			break;
+		case '^':
+			c = a.powermod(b, n);
+			break;
+	}
+	_c.innerText = c.toString(16);
+}
+
+function ec_calc(curve)
+{
+	curve = curve || sjcl.ecc.curves.c25519;
+	let k = _k.value || 0, l = _l.value || 0, p = _P.value, q = _Q.value//, op = document.querySelector('#ec_form input[name=op]:checked').value;
+
+	k = new curve.field(new sjcl.bn(k));
+	l = new curve.field(new sjcl.bn(l));
+	p = curve.decode(p);
+	q = curve.decode(q);
+
+	var r = p.mult2(k, l, q);
+
+	_R.innerText = curve.encode(r);
+}
+
+function srp_verify()
+{
+	let n = _srp_n.value, id = _srp_id.value, pass = _srp_pass.value,
+		u = _srp_u.value, a = _srp_a.value, b = _srp_b.value, s = _srp_s.value;
+
+	let g = new sjcl.bn(2);
+	n = new sjcl.bn(n);
+		
+	/* x = hash(ID,pass) */
+	let inner = sjcl.hash.sha1.hash(id + ':' + pass);
+	s = sjcl.codec.hex.toBits(s);
+	let x = sjcl.hash.sha1.hash(sjcl.bitArray.concat(s, inner));
+	x = sjcl.bn.fromBits(x);
+
+	/* A = g^a */
+	a = new sjcl.bn(a);
+	let A = g.powermod(a, n);
+	/* v = g^x */
+	let v = g.powermod(x, n);
+	
+	/* B = v + g^b */
+	u = new sjcl.bn(u);
+	b = new sjcl.bn(b);
+	let B = g.powermod(b, n).add(v).mod(n);
+	/* S = (A*v^u)^b */
+	let Ss = v.powermod(u, n).mulmod(A, n).powermod(b, n);
+
+	/* S = (B-g^x)^(a+ux) */
+	let e = u.mulmod(x, n).add(a);
+	t = B.sub(v).mod(n);
+	let Sc = t.powermod(e, n);
+	
+	_srp_v.innerText = v.toString(16);
+	_srp_A.innerText = A.toString(16);
+	_srp_x.innerText = x.toString(16);
+	_srp_Sc.innerText = Sc.toString(16);
+	_srp_B.innerText = B.toString(16);
+	_srp_Ss.innerText = Ss.toString(16);
+}
+
+/* precompute */
+function bn_precompute(g, w, n, r)
+{
+	g = g || 2;
+	w = w || 8;
+	n = n || "EEAF0AB9ADB38DD69C33F80AFA8FC5E86072618775FF3C0B9EA2314C9C256576D674DF7496EA81D3383B4813D692C6E0E0D5D8E250B98BE48E495C1D6089DAD15DC7D7B46154D6B6CE8EF4AD69B15D4982559B297BCF1885C529F566660E57EC68EDBC3C05726CC02FD4CBF4976EAA9AFD5138FE8376435B9FC61D2FC0EB06E3";
+	r = r || "86B12630C1C9686B4AE0C98F382E6A3E92616473862B5195EEBBE32EEC12F0B09A2DC5FAEF4DE35A7B0BA906876DE31AE3E814875E73975C559205EB652D1E389F27EAF3AFCDE2A93096D9F9E3001E940B1B1BD3BBA4D6AEA56A725E71B6D2DDB4F267F06C584732F657E46D3048D07A98AD1624727584BCD5C63E486C971C8A";
+	
+	n = new sjcl.bn(n);
+	r = new sjcl.bn(r);
+	g = new sjcl.bn(g);//.mulmod(r, n);
+	var t = new sjcl.bn(1);
+	
+	for (var i=0; i*w<n.bitLength(); i++)
+	{
+		console.log("tb["+i+"][0] : "+r.toString(16));
+		//t = g.copy();
+		//console.log("tb["+i+"][1] : "+g.toString(16));
+		for (var j=1; j<1<<w; j++)
+		{
+			t = t.mulmod(g, n);
+			console.log("tb["+i+"]["+j+"] : "+t.mulmod(r, n).toString(16));
+		}
+		g = t.mulmod(g, n);
+		//console.log("new g : "+g.toString(16));
+		t = new sjcl.bn(1);
+	}
+}
+
+
+function foo()
+{
+	var curve = sjcl.ecc.curves.c25519, p = new sjcl.ecc.point(curve);
+	let G = curve.G;
+	
+	for (var i=1; i<17; i++)
+	{
+		p = p.toJac().add(G).toAffine();
+		console.log('['+i+']G.x = '+p.x.toString(16));
+		console.log('['+i+']G.y = '+p.y.toString(16));
+	}
+	
+}
+
+
+</script>
+
+</head>
+<body>
+
+<div class="panel" id="left">
+<h1>Multi-precision Calculator</h1>
+<form>
+<table>
+	<tr>
+		<td><label for="n">N:</label></td>
+		<td><input type="text" id="n"/></td>
+	</tr><tr>
+		<td><label for="a">A:</label></td>
+		<td><input type="text" id="a"/></td>
+	</tr><tr>
+		<td><label for="b">B:</label></td>
+		<td><input type="text" id="b"/></td>
+	</tr><tr>
+		<td>OP</td>
+		<td>
+			<input type="radio" id="add" name="op" value='+' checked/>
+			<label for="add">+</label>
+			<input type="radio" id="sub" name="op" value='-'/>
+			<label for="sub">-</label>
+			<input type="radio" id="mul" name="op" value='×'/>
+			<label for="mul">×</label>
+			<input id="pow" type="radio" name="op" value='^'/>
+			<label for="pow">^</label>
+		</td>
+	</tr><tr>
+		<td>C:</td>
+		<td><span id="c"></span></td>
+	</tr><tr>
+		<td></td>
+		<td>
+			<input type="button" value="go" onclick="bn_calc()"/>
+			<input type="reset" value="reset" />
+		</td>
+	</tr>
+</table>
+</form>
+
+<h1>SRP</h1>
+<form id="bn_form">
+<table>
+	<tr>
+		<td><label for="srp_n">n:</label></td>
+		<td><input type="text" id="srp_n"/></td>
+	</tr><tr>
+		<td><label for="srp_id">ID:</label></td>
+		<td><input type="text" id="srp_id" value="weir007"/></td>
+	</tr><tr>
+		<td><label for="srp_pass">pass:</label></td>
+		<td><input type="password" id="srp_pass" value="QBZ95-1"/></td>
+	</tr><tr>
+		<td><label for="srp_s">salt:</label></td>
+		<td><input type="text" id="srp_s" value="c70b2573"/></td>
+	</tr><tr>
+		<td>v:</td>
+		<td><span id="srp_v"></span></td>
+	</tr><tr>
+		<td colspan="2">Client-Side</td>
+	</tr><tr>
+		<td><label for="srp_a">a:</label></td>
+		<td><input type="text" id="srp_a" value="0xa4c1ac08afb9fd801ca21ac366e42f1bebda226f590228e60ebfae9ebf56b9c1a1ab01671926abf25682110c6c3e694a54919d9aee03ec73617979eb2e5bbbffdca56aea620f8a89c5d995c21b74cc660c4c121ce5d289e732b5c5b14f712cddf7330aa1b32ce95d378522d04e27273f9d3b3804b6ef5e0d28a54f22b999e025"/></td>
+	</tr><tr>
+		<td>A:</td>
+		<td><span id="srp_a1"></span></td>
+	</tr><tr>
+		<td>x:</td>
+		<td><span id="srp_x"></span></td>
+	</tr><tr>
+		<td>S:</td>
+		<td><span id="srp_Sc"></span></td>
+	</tr><tr>
+		<td colspan="2">Server-Side</td>
+	</tr><tr>
+		<td><label for="srp_u">u:</label></td>
+		<td><input type="text" id="srp_u" value="3E206613806C02DA3C248D055C42EE5E84F490D454B692D40E61F21567C222A5E288B862F4BA3C31DFCA363B0C249990192A646DE0F641EE573303BFF52564D7AD1D39A2D776D3B64009F14C2E8BDC47B540B49536F5838E28864D1EACB1F559CE2FFBA6A5CE5CE5D84E3106D90D4D8E4D012383F6A6111E2C5E3CD8103232DE"/></td>
+	</tr><tr>
+		<td><label for="srp_b">b:</label></td>
+		<td><input type="text" id="srp_b" value="612D8406FCE1EBD42F1CDA082927967628B9F91E5F0B3C8B69796479AB96580CC3DC12BFBDFD93EC196DF442948AB8BC43B1DAA2BC172E2690929F3B28F747EBD459AB91563E7E6FAC72B140FD69FD401AD7E3D7EE11FD7EA39CB9CB9400B6685961F9AFA0771E4CEACF8CE738892753610A2A4F1B27CEBEC38789578840BFE1"/></td>
+	</tr><tr>
+		<td>B:</td>
+		<td><span id="srp_b1"></span></td>
+	</tr><tr>
+		<td>S:</td>
+		<td><span id="srp_Ss"></span></td>
+	</tr><tr>
+		<td></td>
+		<td>
+			<input type="button" value="go" onclick="srp_verify()"/>
+			<input type="reset" value="reset" />
+		</td>
+	</tr>
+</table>
+</form>
+</div>
+
+<div class="panel" id="right">
+<h1>Edwards25519 Calculator</h1>
+<form id="ec_form">
+<table>
+	<tr>
+		<td><label for="k">k:</label></td>
+		<td><input type="text" id="k"/></td>
+	</tr><tr>
+		<td><label for="l">l:</label></td>
+		<td><input type="text" id="l"/></td>
+	</tr><tr>
+		<td><label for="P">P:</label></td>
+		<td><input type="text" id="P"/></td>
+	</tr><tr>
+		<td><label for="Q">Q:</label></td>
+		<td><input type="text" id="Q"/></td>
+	</tr><tr>
+		<!--td>OP</td>
+		<td>
+			<input type="radio" id="paq" name="op" value='paq' checked/>
+			<label for="none_check">P+Q</label>
+			<input type="radio" id="psq" name="op" value='psq'/>
+			<label for="psq">P-Q</label>
+			<input type="radio" id="pdbl" name="op" value='pdbl'/>
+			<label for="pdbl">[2]P</label>
+			<input type="radio" id="kp" name="op" value='kp'/>
+			<label for="kp">[k]P</label>
+			<input type="radio" id="kg" name="op" value='kg'/>
+			<label for="kg">[k]G</label>
+		</td>
+	</tr><tr-->
+		<td>R:</td>
+		<td><span id="R"></span></td>
+	</tr><tr>
+		<td></td>
+		<td>
+			<input type="button" value="go" onclick="ec_calc()"/>
+			<input type="reset" value="reset" />
+		</td>
+	</tr>
+</table>
+</form>
+
+<h1>SPAKE2+</h1>
+<form>
+<table>
+	<tr>
+		<td><label for="srp_n">n:</label></td>
+		<td><input type="text" id="srp_n"/></td>
+	</tr><tr>
+		<td><label for="srp_id">ID:</label></td>
+		<td><input type="text" id="srp_id" value="weir007"/></td>
+	</tr><tr>
+		<td><label for="srp_pass">pass:</label></td>
+		<td><input type="password" id="srp_pass" value="QBZ95-1"/></td>
+	</tr><tr>
+		<td><label for="srp_s">salt:</label></td>
+		<td><input type="text" id="srp_s" value="c70b2573"/></td>
+	</tr><tr>
+		<td>v:</td>
+		<td><span id="srp_v"></span></td>
+	</tr><tr>
+		<td colspan="2">Client-Side</td>
+	</tr><tr>
+		<td><label for="srp_a">a:</label></td>
+		<td><input type="text" id="srp_a" value="0xa4c1ac08afb9fd801ca21ac366e42f1bebda226f590228e60ebfae9ebf56b9c1a1ab01671926abf25682110c6c3e694a54919d9aee03ec73617979eb2e5bbbffdca56aea620f8a89c5d995c21b74cc660c4c121ce5d289e732b5c5b14f712cddf7330aa1b32ce95d378522d04e27273f9d3b3804b6ef5e0d28a54f22b999e025"/></td>
+	</tr><tr>
+		<td>A:</td>
+		<td><span id="srp_a1"></span></td>
+	</tr><tr>
+		<td>x:</td>
+		<td><span id="srp_x"></span></td>
+	</tr><tr>
+		<td>S:</td>
+		<td><span id="srp_Sc"></span></td>
+	</tr><tr>
+		<td colspan="2">Server-Side</td>
+	</tr><tr>
+		<td><label for="srp_u">u:</label></td>
+		<td><input type="text" id="srp_u" value="3E206613806C02DA3C248D055C42EE5E84F490D454B692D40E61F21567C222A5E288B862F4BA3C31DFCA363B0C249990192A646DE0F641EE573303BFF52564D7AD1D39A2D776D3B64009F14C2E8BDC47B540B49536F5838E28864D1EACB1F559CE2FFBA6A5CE5CE5D84E3106D90D4D8E4D012383F6A6111E2C5E3CD8103232DE"/></td>
+	</tr><tr>
+		<td><label for="srp_b">b:</label></td>
+		<td><input type="text" id="srp_b" value="612D8406FCE1EBD42F1CDA082927967628B9F91E5F0B3C8B69796479AB96580CC3DC12BFBDFD93EC196DF442948AB8BC43B1DAA2BC172E2690929F3B28F747EBD459AB91563E7E6FAC72B140FD69FD401AD7E3D7EE11FD7EA39CB9CB9400B6685961F9AFA0771E4CEACF8CE738892753610A2A4F1B27CEBEC38789578840BFE1"/></td>
+	</tr><tr>
+		<td>B:</td>
+		<td><span id="srp_b1"></span></td>
+	</tr><tr>
+		<td>S:</td>
+		<td><span id="srp_Ss"></span></td>
+	</tr><tr>
+		<td></td>
+		<td>
+			<input type="button" value="go" onclick="srp_verify()"/>
+			<input type="reset" value="reset" />
+		</td>
+	</tr>
+</table>
+</form>
+</div>
+</body>
+</html>
